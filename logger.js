@@ -7,7 +7,7 @@ function configure(name) {
     appenders: {
       file: { type: "file", filename: "./logs/" + name + ".log" },
       console: { type: "console" },
-      "console-filter": { type: "logLevelFilter", level: "info", maxLevel: "info", appender: "console" }
+      "console-filter": { type: "logLevelFilter", level: "info", maxLevel: "error", appender: "console" }
     },
     categories: {
       default: { appenders: ["file", "console-filter"], level: "all" }

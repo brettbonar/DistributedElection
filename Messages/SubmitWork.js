@@ -1,16 +1,17 @@
 const Message = require("./Message");
 
 class SubmitWork extends Message {
-  constructor(strings, distance) {
+  constructor(stringPairKey, distance) {
+    super();
     this.type = "submitWork";
-    this.strings = strings;
+    this.stringPairKey = stringPairKey;
     this.distance = distance;
   }
 
   toJSON() {
     return {
       type: this.type,
-      strings: this.strings,
+      stringPairKey: this.stringPairKey,
       distance: this.distance
     };
   }

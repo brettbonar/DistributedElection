@@ -23,7 +23,6 @@ class Socket extends zmq.Socket {
     this.timeoutTime = timeout || 5000;
     this.retries = !_.isUndefined(retries) ? retries : 3;
     this.deferred = q.defer();
-    this.callbacks = [];
 
     if (connection) {
       this.connect(connection);
@@ -49,7 +48,7 @@ class Socket extends zmq.Socket {
   }
 
   sendImpl(data, id) {
-    data = data.toJSON ? JSON.stringify(data.toJSON()) : JSON.stringify(data);
+    data = data && data.toJSON ? JSON.stringify(data.toJSON()) : JSON.stringify(data);
     if (!_.isUndefined(id)) {
       super.send([id, "", data]);
     } else {
@@ -73,11 +72,7 @@ class Socket extends zmq.Socket {
         data = JSON.parse(data.toString());
       }
 
-      for (const cb of this.callbacks) {
-        cb(data, from);
-      }
-
-      this.deferred.resolve({ data: data, from: from });
+      this.deferred.resolve(data);
     });
     this.timeout = setTimeout(() => {
       if (this.retries > 0) {
@@ -88,10 +83,24 @@ class Socket extends zmq.Socket {
         //console.log("FAILED TO SEND: " + JSON.stringify(data, null, 2));
       }
     }, this.timeoutTime);
+
+    return this.deferred.promise;
   }
 
   on(cb) {
-    this.callbacks.push(cb);
+    // clearTimeout(this.timeout);
+    // this.timeout = null;
+    super.on("message", function (data) {
+      let from = null; // will be sender id or publish topic
+      if (arguments.length > 1) {
+        let args = Array.apply(null, arguments);
+        from = args[0];
+        data = JSON.parse(args[args.length - 1].toString());
+      } else {
+        data = JSON.parse(data.toString());
+      }
+      cb(data, from);
+    });
   }
 
   static get CONNECTION_TYPE() {
