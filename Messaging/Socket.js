@@ -92,7 +92,7 @@ class Socket extends zmq.Socket {
       if (that.timeout) {
         if (that.retries > 0) {
           that.retries -= 1;
-          logger.warn("Timed out, retrying...");
+          logger.warn("Timed out, retrying...", data);
           try {
             that.close();
             that.removeListener("message", requestCallback);
