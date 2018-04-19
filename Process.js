@@ -228,7 +228,6 @@ class Process {
       this.socket.send("election", id);
       this.startElection();
     } else if (data.type === "coordinate") {
-      this.socket.send("coordinated", id);
       this.coordinatorId = data.coordinator;
       this.coordinator = _.find(this.processes, { key: data.coordinator });
       if (!this.coordinator) {
@@ -257,7 +256,7 @@ class Process {
             this.removeProcess(process.key);
           } else if (process.key !== this.id && process.key > this.id) {
             this.logger.info("Sent election message to:", process.key);
-            promises.push(new Req(process.data, TIMEOUT).send(new Election()));
+            promises.push(new Req(process.data, TIMEOUT, 0).send(new Election()));
           }
         }
 

@@ -26,7 +26,7 @@ class Socket extends zmq.Socket {
     this.socketType = socketType;
     this.origConnection = connection;
     this.connectionType = connectionType;
-    this.timeoutTime = timeout || 5000;
+    this.timeoutTime = timeout;
     this.retries = !_.isUndefined(retries) ? retries : 3;
     this.deferred = deferred || q.defer();
 
@@ -88,7 +88,7 @@ class Socket extends zmq.Socket {
 
     super.on("message", requestCallback);
 
-    if (!id) {
+    if (!id && this.timeoutTime) {
       let timeoutCb = function () {
         if (that.timeout) {
           if (that.retries > 0) {
@@ -99,7 +99,7 @@ class Socket extends zmq.Socket {
               that.removeListener("message", requestCallback);
             } catch (er) {}
             
-            new Socket(that.origConnection, that.socketType, that.connectionType, that.timeout, that.retries, that.deferred)
+            new Socket(that.origConnection, that.socketType, that.connectionType, that.timeoutTime, that.retries, that.deferred)
               .send(data, id);    
           } else {
             try {
