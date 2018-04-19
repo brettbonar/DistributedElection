@@ -20,7 +20,7 @@ const RequestWork = require("./Messages/RequestWork");
 const Coordinate = require("./Messages/Coordinate");
 const computeEditDistance = require("./computeEditDistance");
 
-const TIMEOUT = 30000;
+const TIMEOUT = 10000;
 const STRING_PROCESSING_TIMEOUT = 30000;
 const START_PORT = 12000;
 
@@ -257,7 +257,7 @@ class Process {
             this.removeProcess(process.key);
           } else if (process.key !== this.id && process.key > this.id) {
             this.logger.info("Sent election message to:", process.key);
-            promises.push(new Req(process.data, TIMEOUT, 0).send(new Election()));
+            promises.push(new Req(process.data, TIMEOUT).send(new Election()));
           }
         }
 
@@ -375,7 +375,7 @@ class Process {
     let distance = computeEditDistance(strings[0], strings[1]);
 
     this.logger.info("Finished computing edit distance, sending result:", stringPairKey, distance);
-    new Req(this.coordinator.data, TIMEOUT, 0)
+    new Req(this.coordinator.data, TIMEOUT)
       .send(new SubmitWork(stringPairKey, distance))
       .then(() => {        
         this.isWorking = false;
@@ -425,7 +425,7 @@ class Process {
     if (this.coordinator && !this.isWorking) {
       this.logger.info("Requesting work");
       this.isWorking = true;
-      new Req(this.coordinator.data, TIMEOUT, 0)
+      new Req(this.coordinator.data, TIMEOUT)
         .send(new RequestWork())
         .then((data) => {
           if (!this.isCoordinator) {
