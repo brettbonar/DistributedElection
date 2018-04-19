@@ -285,18 +285,25 @@ class Process {
 
   // COORDINATOR
 
+  sendCoordinate() {
+    this.updateProcessList().then(() => {
+      for (const process of this.processes) {
+        if (process.key !== this.id && this.binding.ip === process.data.ip && this.binding.port === process.data.port) {
+          // Another process in the list has the same IP and port as this one. Since this one is alive, the other must have died.
+          // Remove it from the list
+          this.removeProcess(process.key);
+        } else if (process.key !== this.id) {
+          this.logger.info("Sent coordinate message to:", process.key);
+          new Req(process.data).send(new Coordinate(this.id));
+        }
+      }
+    });
+
+  }
+
   startCoordinator() {
     this.logger.info(this.id, "is coordinator");
-    for (const process of this.processes) {
-      if (process.key !== this.id && this.binding.ip === process.data.ip && this.binding.port === process.data.port) {
-        // Another process in the list has the same IP and port as this one. Since this one is alive, the other must have died.
-        // Remove it from the list
-        this.removeProcess(process.key);
-      } else if (process.key !== this.id) {
-        this.logger.info("Sent coordinate message to:", process.key);
-        new Req(process.data).send(new Coordinate(this.id));
-      }
-    }
+    this.sendCoordinate();
     if (this.isCoordinator) {
       // Already coordinator, no need to do anything else
       return;
