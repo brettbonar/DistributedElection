@@ -4,6 +4,8 @@ const _ = require("lodash");
 const zmq = require("zmq");
 const q = require("q");
 
+const logger = require("../logger").getLogger("Socket");
+
 let CONNECTION_TYPE = {
   CONNECT: "connect",
   BIND: "bind"
@@ -87,9 +89,11 @@ class Socket extends zmq.Socket {
     this.timeout = setTimeout(() => {
       if (this.retries > 0) {
         this.retries -= 1;
+        logger.warn("Timed out, retrying...");
         this.sendImpl(data, id);
       } else if (this.timeout) {
         try {
+          logger.warn("Timed out, no more retries");
           this.close();
           this.removeListener("message", requestCallback);
         } catch (er) {}
