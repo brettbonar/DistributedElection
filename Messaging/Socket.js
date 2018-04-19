@@ -94,7 +94,7 @@ class Socket extends zmq.Socket {
           if (that.retries > 0) {
             that.retries -= 1;
             logger.warn("Timed out, retrying...", data);
-            this.sendImpl(data, id);    
+            that.sendImpl(data, id);    
           } else {
             that.deferred.reject("Timed out");
             //console.log("FAILED TO SEND: " + JSON.stringify(data, null, 2));
