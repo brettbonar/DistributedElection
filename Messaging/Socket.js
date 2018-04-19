@@ -88,21 +88,7 @@ class Socket extends zmq.Socket {
 
     super.on("message", requestCallback);
 
-    if (id) {
-      let timeoutCb = function () {
-        if (that.timeout) {
-          if (that.retries > 0) {
-            that.retries -= 1;
-            logger.warn("Timed out, retrying...", data);
-            that.sendImpl(data, id);    
-          } else {
-            that.deferred.reject("Timed out");
-            //console.log("FAILED TO SEND: " + JSON.stringify(data, null, 2));
-          }
-        };
-      }
-      this.timeout = setTimeout(timeoutCb, this.timeoutTime);
-    } else {
+    if (!id) {
       let timeoutCb = function () {
         if (that.timeout) {
           if (that.retries > 0) {

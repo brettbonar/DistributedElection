@@ -272,6 +272,9 @@ class Process {
                 this.logger.warn("No election responses. Becoming coordinator.");
                 this.startCoordinator();
               }
+            })
+            .finally(() => {
+              this.electing = false;
             });
         } else {
           this.electing = false;
