@@ -127,8 +127,7 @@ class Process {
   submitResult(data) {
     let params = {
       Bucket: S3_RESULTS_BUCKET,
-      Key: data.stringPairKey,
-      Body: data.distance.toString()
+      Key: data.stringPairKey + ", " + data.distance.toString()
     };
     return s3.putObject(params).promise()
       .then(() => {
@@ -214,7 +213,14 @@ class Process {
   }
 
   updateProcessList() {
-    return this.getProcesses().then((processes) => this.processes = processes);
+    return this.getProcesses().then((processes) => {
+      this.processes = processes;
+
+      if (!_.find(this.processes, { key: this.id })) {
+        this.putProcess(this.id, this.binding);
+      }
+      return processes;
+    });
   }
 
   handleRequest(data, id) {
@@ -237,41 +243,45 @@ class Process {
   }
 
   startElection() {
-    this.logger.info("Starting election");
-    this.updateProcessList().then(() => {
-      let promises = [];
-      for (const process of this.processes) {
-        if (process.key !== this.id && this.binding.ip === process.data.ip && this.binding.port === process.data.port) {
-          // Another process in the list has the same IP and port as this one. Since this one is alive, the other must have died.
-          // Remove it from the list
-          this.removeProcess(process.key);
-        } else if (process.key !== this.id && process.key > this.id) {
-          this.logger.info("Sent election message to:", process.key);
-          promises.push(new Req(process.data, TIMEOUT, 0).send(new Election()));
+    if (!this.electing) {
+      this.electing = true;
+      this.logger.info("Starting election");
+      this.updateProcessList().then(() => {
+        let promises = [];
+        for (const process of this.processes) {
+          if (process.key !== this.id && this.binding.ip === process.data.ip && this.binding.port === process.data.port) {
+            // Another process in the list has the same IP and port as this one. Since this one is alive, the other must have died.
+            // Remove it from the list
+            this.removeProcess(process.key);
+          } else if (process.key !== this.id && process.key > this.id) {
+            this.logger.info("Sent election message to:", process.key);
+            promises.push(new Req(process.data, TIMEOUT, 0).send(new Election()));
+          }
         }
-      }
 
-      if (promises.length > 0) {
-        q.all(promises)
-          .then(() => {
-            this.logger.info("Got election response");
-            this.startWorker();
-          })
-          .catch((er) => {
-            this.logger.warn("Send election failed:", er);
-            this.startCoordinator();
-          });
-      } else {
-        this.startCoordinator();
-      }
-    });
+        if (promises.length > 0) {
+          q.allSettled(promises)
+            .then((results) => {
+              this.electing = false;
+              if (results.some((process) => process.state === "fulfilled")) {
+                this.logger.info("Got election response");
+                this.startWorker();
+              } else {
+                this.logger.warn("No election responses. Becoming coordinator.");
+                this.startCoordinator();
+              }
+            });
+        } else {
+          this.startCoordinator();
+        }
+      });
+    }
   }
 
   // COORDINATOR
 
   startCoordinator() {
     this.logger.info(this.id, "is coordinator");
-
     for (const process of this.processes) {
       if (process.key !== this.id && this.binding.ip === process.data.ip && this.binding.port === process.data.port) {
         // Another process in the list has the same IP and port as this one. Since this one is alive, the other must have died.
@@ -298,7 +308,7 @@ class Process {
         this.logger.info("Coordinator ready");
         let stringPairs = results[0].slice(1).map((content) => content.Key);
         let pendingPairs = results[1].map((content) => content.Key);
-        let finishedPairs = results[2].map((content) => content.Key);
+        let finishedPairs = results[2].map((content) => content.Key.split(",")[0]);
         this.stringPairs = _.difference(stringPairs, pendingPairs, finishedPairs);
         this.coordinatorReady.resolve();
       });
@@ -336,10 +346,10 @@ class Process {
   }
 
   getNextString() {
-    if (this.stringPairs.length === 0) {
+    if (this.stringPairs.length === 0 && this.pendingStrings.length === 0) {
       return false;
     }
-    return this.stringPairs[0];
+    return _.head(this.stringPairs) || _.head(this.pendingStrings);
   }
 
   // WORKER
@@ -355,25 +365,38 @@ class Process {
     this.logger.info("Finished computing edit distance, sending result:", stringPairKey, distance);
     new Req(this.coordinator.data, TIMEOUT, 0)
       .send(new SubmitWork(stringPairKey, distance))
-      .then(() => this.requestWork())
+      .then(() => {        
+        this.isWorking = false;
+        if (!this.isCoordinator) {
+          this.requestWork();
+        }
+      })
       .catch((er) => {
         this.logger.error("Error in submit work response:", er);
-        this.startElection()
+        this.isWorking = false;
+        if (!this.isCoordinator) {
+          this.startElection()
+        }
+        this.startElection();
       });
-
-    this.isWorking = false;
   }
 
   startWork(data) {
     this.logger.info("Starting work on string pair:", data.stringPairKey);
     this.getStringPair(data.stringPairKey)
       .then((stringPairObject) => {
-        this.computeAndSubmitEditDistance(data.stringPairKey, stringPairObject);
+        if (!this.isCoordinator) {
+          this.computeAndSubmitEditDistance(data.stringPairKey, stringPairObject);
+        }
       })
-      .catch((er) => this.logger.error("Failed to get string pair:", data.stringPairKey, er))
+      .catch((er) => {
+        this.logger.error("Failed to get string pair:", data.stringPairKey, er);
+        this.isWorking = false;
+        this.requestWork();
+      });
   }
 
-  handleRequestWorkResponse(data) {
+  handleRequestWorkResponse(data) {    
     this.logger.info("Got request work response");
     if (data.terminate) {
       this.logger.info("No more work, terminating...");
@@ -392,11 +415,17 @@ class Process {
       this.isWorking = true;
       new Req(this.coordinator.data, TIMEOUT, 0)
         .send(new RequestWork())
-        .then((data) => this.handleRequestWorkResponse(data))
+        .then((data) => {
+          if (!this.isCoordinator) {
+            this.handleRequestWorkResponse(data);
+          }
+        })
         .catch((er) => {
           this.logger.error("Error in request work response:", er);
           this.isWorking = false;
-          this.startElection()
+          if (!this.isCoordinator) {
+            this.startElection()
+          }
         });
     }
     // else get processes list?
@@ -406,9 +435,7 @@ class Process {
     this.logger.info(this.id, "is worker");
     this.isCoordinator = false;
     this.requestHandler = this.handleWorkerRequests;
-    if (!this.isWorking) {
-      this.requestWork();
-    }
+    this.requestWork();
   }
 }
 

@@ -60,11 +60,13 @@ class Socket extends zmq.Socket {
     }
   }
 
+
+
   send(data, id) {
     let that = this;
     this.sendImpl(data, id);
     
-    super.on("message", function(msgData) {
+    let requestCallback = function(msgData) {
       clearTimeout(that.timeout);
       that.timeout = null;
 
@@ -78,13 +80,19 @@ class Socket extends zmq.Socket {
       }
 
       this.deferred.resolve(msgData, from);
-    });
+    };
+
+    super.on("message", requestCallback);
 
     this.timeout = setTimeout(() => {
       if (this.retries > 0) {
         this.retries -= 1;
         this.sendImpl(data, id);
       } else if (this.timeout) {
+        try {
+          this.close();
+          this.removeListener("message", requestCallback);
+        } catch (er) {}
         this.deferred.reject("Timed out");
         //console.log("FAILED TO SEND: " + JSON.stringify(data, null, 2));
       }
