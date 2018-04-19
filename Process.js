@@ -20,7 +20,7 @@ const RequestWork = require("./Messages/RequestWork");
 const Coordinate = require("./Messages/Coordinate");
 const computeEditDistance = require("./computeEditDistance");
 
-const TIMEOUT = 5000;
+const TIMEOUT = 10000;
 const STRING_PROCESSING_TIMEOUT = 30000;
 const START_PORT = 12000;
 

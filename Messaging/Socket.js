@@ -20,14 +20,15 @@ function getAddress(connection) {
 }
 
 class Socket extends zmq.Socket {
-  constructor(connection, socketType, connectionType, timeout, retries) {
+  constructor(connection, socketType, connectionType, timeout, retries, deferred) {
     super(socketType);
     this.setMaxListeners(0);
     this.socketType = socketType;
+    this.origConnection = connection;
     this.connectionType = connectionType;
     this.timeoutTime = timeout || 5000;
     this.retries = !_.isUndefined(retries) ? retries : 3;
-    this.deferred = q.defer();
+    this.deferred = deferred || q.defer();
 
     if (connection) {
       this.connect(connection);
@@ -95,8 +96,9 @@ class Socket extends zmq.Socket {
           that.close();
           that.removeListener("message", requestCallback);
         } catch (er) {}
-        that.sendImpl(data, id);
-        that.timeout = setTimeout(timeoutCb, that.timeoutTime);        
+        
+        new Socket(that.origConnection, that.socketType, that.connectionType, that.timeout, that.retries, that.deferred)
+          .send(data, id);    
       } else if (that.timeout) {
         try {
           logger.warn("Timed out, no more retries");
