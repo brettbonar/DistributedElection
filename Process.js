@@ -256,7 +256,7 @@ class Process {
             this.removeProcess(process.key);
           } else if (process.key !== this.id && process.key > this.id) {
             this.logger.info("Sent election message to:", process.key);
-            promises.push(new Req(process.data).send(new Election()));
+            promises.push(new Req(process.data, TIMEOUT).send(new Election()));
           }
         }
 
