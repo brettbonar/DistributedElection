@@ -144,7 +144,7 @@ class Process {
       Key: this.getFolderKey(S3_PROCESSES_FOLDER, key)
     };
     return s3.deleteObject(params).promise()
-      .then(() => this.logger.info("Removed stale process:", key))
+      .then(() => this.logger.warn("Removed stale process:", key))
       .catch(() => this.logger.error("Failed to remove stale process:", key))
   }
 
@@ -233,10 +233,12 @@ class Process {
       this.coordinator = _.find(this.processes, { key: data.coordinator });
       if (!this.coordinator) {
         this.updateProcessList().then(() => {
+          this.logger.info("Coordinator is", data.coordinator);
           this.coordinator = _.find(this.processes, { key: data.coordinator });
           this.startWorker();
         });
       } else {
+        this.logger.info("Coordinator is", data.coordinator);
         this.startWorker();
       }
     }
@@ -277,7 +279,7 @@ class Process {
         }
       });
     } else {
-      console.log("Already in election, will not start a new election");
+      this.logger.warn("Already in election, will not start a new election");
     }
   }
 
