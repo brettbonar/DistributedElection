@@ -255,7 +255,7 @@ class Process {
             // Remove it from the list
             this.removeProcess(process.key);
           } else if (process.key !== this.id && process.key > this.id) {
-            this.logger.info("Sent election message to:", process.key, process.binding);
+            this.logger.info("Sent election message to:", process.key, process.data);
             promises.push(new Req(process.data, TIMEOUT).send(new Election()));
           }
         }
@@ -295,7 +295,7 @@ class Process {
           // Remove it from the list
           this.removeProcess(process.key);
         } else if (process.key !== this.id) {
-          this.logger.info("Sent coordinate message to:", process.key, process.binding);
+          this.logger.info("Sent coordinate message to:", process.key, process.data);
           new Req(process.data).send(new Coordinate(this.id));
         }
       }
