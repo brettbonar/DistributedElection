@@ -2,7 +2,7 @@
 
 const _ = require("lodash");
 const zmq = require("zmq");
-const q = require("Q");
+const q = require("q");
 
 let CONNECTION_TYPE = {
   CONNECT: "connect",
