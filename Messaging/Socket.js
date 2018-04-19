@@ -53,6 +53,7 @@ class Socket extends zmq.Socket {
   }
 
   sendImpl(data, id) {
+    logger.info("Sending", data);
     data = data && data.toJSON ? JSON.stringify(data.toJSON()) : JSON.stringify(data);
     if (!_.isUndefined(id)) {
       super.send([id, "", data]);
@@ -86,28 +87,33 @@ class Socket extends zmq.Socket {
 
     super.on("message", requestCallback);
 
-    this.timeout = setTimeout(() => {
-      if (this.retries > 0) {
-        this.retries -= 1;
+    let timeoutCb = function () {
+      if (that.retries > 0) {
+        that.retries -= 1;
         logger.warn("Timed out, retrying...");
-        this.sendImpl(data, id);
-      } else if (this.timeout) {
+        try {
+          that.close();
+          that.removeListener("message", requestCallback);
+        } catch (er) {}
+        that.sendImpl(data, id);
+        that.timeout = setTimeout(timeoutCb, that.timeoutTime);        
+      } else if (that.timeout) {
         try {
           logger.warn("Timed out, no more retries");
-          this.close();
-          this.removeListener("message", requestCallback);
+          that.close();
+          that.removeListener("message", requestCallback);
         } catch (er) {}
-        this.deferred.reject("Timed out");
+        that.deferred.reject("Timed out");
         //console.log("FAILED TO SEND: " + JSON.stringify(data, null, 2));
       }
-    }, this.timeoutTime);
+    };
+
+    this.timeout = setTimeout(timeoutCb, this.timeoutTime);
 
     return this.deferred.promise;
   }
 
   on(cb) {
-    // clearTimeout(this.timeout);
-    // this.timeout = null;
     super.on("message", function (data) {
       let from = null; // will be sender id or publish topic
       if (arguments.length > 1) {
