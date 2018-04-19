@@ -2,7 +2,7 @@ const _ = require("lodash");
 const uuid = require("uuid/v4");
 const publicIp = require("public-ip");
 const detect = require("detect-port");
-const q = require("Q");
+const q = require("q");
 
 const AWS = require('aws-sdk');
 const s3 = new AWS.S3();
