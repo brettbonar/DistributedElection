@@ -272,9 +272,12 @@ class Process {
               }
             });
         } else {
+          this.electing = false;
           this.startCoordinator();
         }
       });
+    } else {
+      console.log("Already in election, will not start a new election");
     }
   }
 
