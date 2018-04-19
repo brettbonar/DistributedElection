@@ -62,7 +62,7 @@ class Process {
         }
         
         this.binding = {
-          ip: "eth0",
+          ip: ip,
           port: port
         };
         this.logger.info("Binding to:", this.binding.ip, this.binding.port);
