@@ -89,26 +89,28 @@ class Socket extends zmq.Socket {
     super.on("message", requestCallback);
 
     let timeoutCb = function () {
-      if (that.retries > 0) {
-        that.retries -= 1;
-        logger.warn("Timed out, retrying...");
-        try {
-          that.close();
-          that.removeListener("message", requestCallback);
-        } catch (er) {}
-        
-        new Socket(that.origConnection, that.socketType, that.connectionType, that.timeout, that.retries, that.deferred)
-          .send(data, id);    
-      } else if (that.timeout) {
-        try {
-          logger.warn("Timed out, no more retries");
-          that.close();
-          that.removeListener("message", requestCallback);
-        } catch (er) {}
-        that.deferred.reject("Timed out");
-        //console.log("FAILED TO SEND: " + JSON.stringify(data, null, 2));
-      }
-    };
+      if (that.timeout) {
+        if (that.retries > 0) {
+          that.retries -= 1;
+          logger.warn("Timed out, retrying...");
+          try {
+            that.close();
+            that.removeListener("message", requestCallback);
+          } catch (er) {}
+          
+          new Socket(that.origConnection, that.socketType, that.connectionType, that.timeout, that.retries, that.deferred)
+            .send(data, id);    
+        } else {
+          try {
+            logger.warn("Timed out, no more retries");
+            that.close();
+            that.removeListener("message", requestCallback);
+          } catch (er) {}
+          that.deferred.reject("Timed out");
+          //console.log("FAILED TO SEND: " + JSON.stringify(data, null, 2));
+        }
+      };
+    }
 
     this.timeout = setTimeout(timeoutCb, this.timeoutTime);
 
