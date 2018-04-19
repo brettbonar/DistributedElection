@@ -1,3 +1,5 @@
+"use strict";
+
 const _ = require("lodash");
 const zmq = require("zmq");
 const q = require("Q");
@@ -18,6 +20,7 @@ function getAddress(connection) {
 class Socket extends zmq.Socket {
   constructor(connection, socketType, connectionType, timeout, retries) {
     super(socketType);
+    this.setMaxListeners(0);
     this.socketType = socketType;
     this.connectionType = connectionType;
     this.timeoutTime = timeout || 5000;
@@ -58,22 +61,25 @@ class Socket extends zmq.Socket {
   }
 
   send(data, id) {
+    let that = this;
     this.sendImpl(data, id);
-    super.on("message", (data) => {
-      clearTimeout(this.timeout);
-      this.timeout = null;
+    
+    super.on("message", function(msgData) {
+      clearTimeout(that.timeout);
+      that.timeout = null;
 
       let from = null; // will be sender id or publish topic
       if (arguments.length > 1) {
         let args = Array.apply(null, arguments);
         from = args[0];
-        data = JSON.parse(args[args.length - 1].toString());
+        msgData = JSON.parse(args[args.length - 1].toString());
       } else {
-        data = JSON.parse(data.toString());
+        msgData = JSON.parse(msgData.toString());
       }
 
-      this.deferred.resolve(data);
+      this.deferred.resolve(msgData, from);
     });
+
     this.timeout = setTimeout(() => {
       if (this.retries > 0) {
         this.retries -= 1;

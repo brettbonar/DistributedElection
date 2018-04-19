@@ -13,7 +13,7 @@ AWS.config.setPromisesDependency(require("q").Promise);
 
 const logger = require("./logger");
 const Req = require("./Messaging/Req");
-const Rep = require("./Messaging/Rep");
+const Router = require("./Messaging/Router");
 const Election = require("./Messages/Election");
 const SubmitWork = require("./Messages/SubmitWork");
 const RequestWork = require("./Messages/RequestWork");
@@ -21,15 +21,15 @@ const Coordinate = require("./Messages/Coordinate");
 const computeEditDistance = require("./computeEditDistance");
 
 const TIMEOUT = 10000;
-const STRING_PROCESSING_TIMEOUT = 60000;
+const STRING_PROCESSING_TIMEOUT = 10000;
 const START_PORT = 3000;
 
 const S3_SOURCE_BUCKET = "distributed-election";
 const S3_BUCKET = "distributed-election-run";
+const S3_RESULTS_BUCKET = "string-pair-results";
+const S3_PENDING_BUCKET = "string-pair-pending";
 const S3_PROCESSES_FOLDER = "processes";
 const S3_STRING_PAIR_FOLDER = "string-pairs";
-const S3_RESULTS_FOLDER = "string-pair-results";
-const S3_PENDING_FOLDER = "string-pair-pending";
 
 class Process {
   constructor(binding) {
@@ -44,8 +44,6 @@ class Process {
 
     this.isCoordinator = false;
     this.isWorking = false;
-
-    this.done = false;
 
     // TODO: put all requests on here and resend to new coordinator if
     // an election is done before requests are satisfied
@@ -67,10 +65,11 @@ class Process {
           ip: "localhost", //ip,
           port: port
         };
-        this.socket = new Rep(this.binding);
-        this.socket.on((data) => {
-          this.logger.info("Got request", data);
-          this.requestHandler(data);
+        this.logger.info("Binding to:", this.binding.ip, this.binding.port);
+        this.socket = new Router(this.binding);
+        this.socket.on((data, id) => {
+          this.logger.info("Got request:", data);
+          this.requestHandler(data, id);
         });
         
         q.all([this.updateProcessList(), this.putProcess(this.id, this.binding)])
@@ -79,8 +78,7 @@ class Process {
           })
           .catch((er) => {
             this.logger.error(er);
-            this.logger.error(er);
-            this.done = true;
+            process.exit();
           });
       });
     });
@@ -110,13 +108,14 @@ class Process {
 
   getDirectoryListing(bucket, directory) {
     let params = {
-      Bucket: bucket,
-      Delimiter: "/",
-      Prefix: directory + "/"
+      Bucket: bucket
     };
+    if (directory) {
+      params.Prefix = directory + "/";
+      params.Delimiter = "/";
+    }
   
     return s3.listObjects(params).promise().then((data) => {
-      // Ignore first result since it is just the directory
       return data.Contents;
     });
   }
@@ -127,17 +126,27 @@ class Process {
   
   submitResult(data) {
     let params = {
-      Bucket: S3_BUCKET,
-      Key: this.getFolderKey(S3_RESULTS_FOLDER, data.stringPairKey),
+      Bucket: S3_RESULTS_BUCKET,
+      Key: data.stringPairKey,
       Body: data.distance.toString()
     };
     return s3.putObject(params).promise()
       .then(() => {
-        this.logger.info("Put result", data.stringPairKey, data.distance);
+        this.logger.info("Put result:", data.stringPairKey, data.distance);
       })
       .catch((er) => {
-        this.logger.error("Failed to put result", data.stringPairKey, data.distance, er);
+        this.logger.error("Failed to put result:", data.stringPairKey, data.distance, er);
       });
+  }
+
+  removeProcess(key) {
+    let params = {
+      Bucket: S3_BUCKET,
+      Key: this.getFolderKey(S3_PROCESSES_FOLDER, key)
+    };
+    return s3.deleteObject(params).promise()
+      .then(() => this.logger.info("Removed stale process:", key))
+      .catch(() => this.logger.error("Failed to remove stale process:", key))
   }
 
   removePending(stringPairKey) {
@@ -147,15 +156,15 @@ class Process {
     }
 
     let removePendingParams = {
-      Bucket: S3_BUCKET,
-      Key: this.getFolderKey(S3_PENDING_FOLDER, stringPairKey)
+      Bucket: S3_PENDING_BUCKET,
+      Key: stringPairKey
     };
     s3.deleteObject(removePendingParams).promise()
       .then(() => {
-        this.logger.info("Removed pending", stringPairKey);
+        this.logger.info("Removed pending:", stringPairKey);
       })
       .catch(() => {
-        this.logger.error("Failed to remove pending", stringPairKey);
+        this.logger.error("Failed to remove pending:", stringPairKey);
       })
   }
   
@@ -175,27 +184,27 @@ class Process {
     };
     s3.putObject(params).promise()
       .then((result) => {
-        this.logger.info("Put pending", data.stringPairKey);
+        this.logger.info("Put process:", data.stringPairKey);
         return result;
       })
       .catch((er) => {
-        this.logger.error("Failed to put pending", data.stringPairKey, er);
+        this.logger.error("Failed to put process:", data.stringPairKey, er);
         throw er;
       })
   }
   
   putPendingString(stringPairKey) {
     let params = {
-      Bucket: S3_BUCKET,
-      Key: this.getFolderKey(S3_PENDING_FOLDER, stringPairKey)
+      Bucket: S3_PENDING_BUCKET,
+      Key: stringPairKey
     };
     return s3.putObject(params).promise()
       .then((result) => {
-        this.logger.info("Put pending", data.stringPairKey);
+        this.logger.info("Put pending:", data.stringPairKey);
         return result;
       })
       .catch((er) => {
-        this.logger.error("Failed to put pending", data.stringPairKey, er);
+        this.logger.error("Failed to put pending:", data.stringPairKey, er);
         throw er;
       })
   }
@@ -208,12 +217,12 @@ class Process {
     return this.getProcesses().then((processes) => this.processes = processes);
   }
 
-  handleRequest(data) {
+  handleRequest(data, id) {
     if (data.type === "election") {
-      this.socket.send("election");
+      this.socket.send("election", id);
       this.startElection();
     } else if (data.type === "coordinate") {
-      this.socket.send("coordinated");
+      this.socket.send("coordinated", id);
       this.coordinatorId = data.coordinator;
       this.coordinator = _.find(this.processes, { key: data.coordinator });
       if (!this.coordinator) {
@@ -232,17 +241,24 @@ class Process {
     this.updateProcessList().then(() => {
       let promises = [];
       for (const process of this.processes) {
-        if (process.key !== this.id && process.key > this.id) {
-          this.logger.info("Sent election message to", process.key);
+        if (process.key !== this.id && this.binding.ip === process.data.ip && this.binding.port === process.data.port) {
+          // Another process in the list has the same IP and port as this one. Since this one is alive, the other must have died.
+          // Remove it from the list
+          this.removeProcess(process.key);
+        } else if (process.key !== this.id && process.key > this.id) {
+          this.logger.info("Sent election message to:", process.key);
           promises.push(new Req(process.data, TIMEOUT, 0).send(new Election()));
         }
       }
 
       if (promises.length > 0) {
         q.all(promises)
-          .then(() => this.startWorker())
+          .then(() => {
+            this.logger.info("Got election response");
+            this.startWorker();
+          })
           .catch((er) => {
-            this.logger.info(warn);
+            this.logger.warn("Send election failed:", er);
             this.startCoordinator();
           });
       } else {
@@ -255,53 +271,67 @@ class Process {
 
   startCoordinator() {
     this.logger.info(this.id, "is coordinator");
+
+    for (const process of this.processes) {
+      if (process.key !== this.id && this.binding.ip === process.data.ip && this.binding.port === process.data.port) {
+        // Another process in the list has the same IP and port as this one. Since this one is alive, the other must have died.
+        // Remove it from the list
+        this.removeProcess(process.key);
+      } else if (process.key !== this.id) {
+        this.logger.info("Sent coordinate message to:", process.key);
+        new Req(process.data).send(new Coordinate(this.id));
+      }
+    }
+    if (this.isCoordinator) {
+      // Already coordinator, no need to do anything else
+      return;
+    }
+
     this.isCoordinator = true;
     this.requestHandler = this.handleCoordinatorRequests;
     this.coordinatorReady = q.defer();
 
-    for (const process of this.processes) {
-      if (process.key !== this.id) {
-        this.logger.info("Sent coordinate message to", process.key);
-        new Req(process.data).send(new Coordinate(this.id));
-      }
-    }
-
-    this.getDirectoryListing(S3_SOURCE_BUCKET, S3_STRING_PAIR_FOLDER)
-      .then((stringPairs) => {
-        this.stringPairs = stringPairs.slice(1).map((content) => content.Key);
+    q.all([this.getDirectoryListing(S3_SOURCE_BUCKET, S3_STRING_PAIR_FOLDER),
+          this.getDirectoryListing(S3_PENDING_BUCKET),
+          this.getDirectoryListing(S3_RESULTS_BUCKET)])
+      .then((results) => {
+        this.logger.info("Coordinator ready");
+        let stringPairs = results[0].slice(1).map((content) => content.Key);
+        let pendingPairs = results[1].map((content) => content.Key);
+        let finishedPairs = results[2].map((content) => content.Key);
+        this.stringPairs = _.difference(stringPairs, pendingPairs, finishedPairs);
         this.coordinatorReady.resolve();
       });
   }
 
-  handleWorkRequest() {
+  handleWorkRequest(id) {
     let stringPairKey = this.getNextString();
     if (stringPairKey) {
       this.putPendingString(stringPairKey);
       _.pull(this.stringPairs, stringPairKey);
-      this.logger.info("Sent work response", stringPairKey);
-      this.socket.send({ stringPairKey: stringPairKey });
+      this.logger.info("Sent work response:", stringPairKey);
+      this.socket.send({ stringPairKey: stringPairKey }, id);
       
       this.pendingStrings[stringPairKey] = setTimeout(() => {
-        this.logger.warn("String pair processing timed out", stringPairKey);
+        this.logger.warn("String pair processing timed out:", stringPairKey);
         this.stringPairs.push(stringPairKey);
         this.removePending(stringPairKey);
       }, STRING_PROCESSING_TIMEOUT);
     } else {
       // No more strings to compute
-      this.socket.send({ terminate: true });
+      this.socket.send({ terminate: true }, id);
     }
   }
 
-  handleCoordinatorRequests(data) {
-    this.handleRequest(data);
+  handleCoordinatorRequests(data, id) {
+    this.handleRequest(data, id);
     
     if (data.type === "requestWork") {
-      // TODO: may need to use router if this will create synchronization problems
-      this.coordinatorReady.promise.then(() => this.handleWorkRequest());
+      this.coordinatorReady.promise.then(() => this.handleWorkRequest(id));
     } else if (data.type === "submitWork") {
       this.removePending(data.stringPairKey);
       this.submitResult(data);
-      this.socket.send("submitted");
+      this.socket.send("submitted", id);
     }
   }
 
@@ -314,42 +344,40 @@ class Process {
 
   // WORKER
 
-  handleWorkerRequests(data) {
-    this.handleRequest(data);
+  handleWorkerRequests(data, id) {
+    this.handleRequest(data, id);
   }
 
   computeAndSubmitEditDistance(stringPairKey, stringPair) {
-    this.isWorking = true;
     let strings = stringPair.Body.toString().split("\n");
     let distance = computeEditDistance(strings[0], strings[1]);
 
-    this.logger.info("Finished computing edit distance, sending result", stringPairKey, distance);
+    this.logger.info("Finished computing edit distance, sending result:", stringPairKey, distance);
     new Req(this.coordinator.data, TIMEOUT, 0)
       .send(new SubmitWork(stringPairKey, distance))
+      .then(() => this.requestWork())
       .catch((er) => {
-        this.logger.error("Error in request work response", er);
+        this.logger.error("Error in submit work response:", er);
         this.startElection()
       });
 
     this.isWorking = false;
-    this.requestWork();
   }
 
   startWork(data) {
-    this.logger.info("Starting work on string pair", data.stringPairKey);
-    // TODO: Get strings from S3
+    this.logger.info("Starting work on string pair:", data.stringPairKey);
     this.getStringPair(data.stringPairKey)
       .then((stringPairObject) => {
         this.computeAndSubmitEditDistance(data.stringPairKey, stringPairObject);
       })
-      .catch((er) => this.logger.error("Failed to get string pair", data.stringPairKey, er))
+      .catch((er) => this.logger.error("Failed to get string pair:", data.stringPairKey, er))
   }
 
   handleRequestWorkResponse(data) {
+    this.logger.info("Got request work response");
     if (data.terminate) {
-      // Terminate somehow
       this.logger.info("No more work, terminating...");
-      this.done = true;
+      process.exit();
     } else if (data.stringPairKey) {
       this.startWork(data);
     } else {
@@ -359,13 +387,15 @@ class Process {
   }
 
   requestWork() {
-    if (this.coordinator) {
+    if (this.coordinator && !this.isWorking) {
       this.logger.info("Requesting work");
+      this.isWorking = true;
       new Req(this.coordinator.data, TIMEOUT, 0)
         .send(new RequestWork())
         .then((data) => this.handleRequestWorkResponse(data))
         .catch((er) => {
-          this.logger.error("Error in request work response", er);
+          this.logger.error("Error in request work response:", er);
+          this.isWorking = false;
           this.startElection()
         });
     }
