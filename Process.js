@@ -66,7 +66,7 @@ class Process {
           port: port
         };
         this.logger.info("Binding to:", this.binding.ip, this.binding.port);
-        this.socket = new Router({ ip: "localhost", port: port });
+        this.socket = new Router({ ip: "eth0", port: port });
         this.socket.on((data, id) => {
           this.logger.info("Got request:", data);
           this.requestHandler(data, id);
