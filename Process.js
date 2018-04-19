@@ -62,7 +62,7 @@ class Process {
         }
         
         this.binding = {
-          ip: "localhost", //ip,
+          ip: "eth0",
           port: port
         };
         this.logger.info("Binding to:", this.binding.ip, this.binding.port);
@@ -256,7 +256,7 @@ class Process {
             this.removeProcess(process.key);
           } else if (process.key !== this.id && process.key > this.id) {
             this.logger.info("Sent election message to:", process.key);
-            promises.push(new Req(process.data, TIMEOUT, 0).send(new Election()));
+            promises.push(new Req(process.data).send(new Election()));
           }
         }
 
@@ -338,7 +338,7 @@ class Process {
       
       this.pendingStrings[stringPairKey] = setTimeout(() => {
         this.logger.warn("String pair processing timed out:", stringPairKey);
-        this.stringPairs.push(stringPairKey);
+        this.stringPairs.unshift(stringPairKey);
         this.removePending(stringPairKey);
       }, STRING_PROCESSING_TIMEOUT);
     } else {
