@@ -98,7 +98,7 @@ class Socket extends zmq.Socket {
             that.removeListener("message", requestCallback);
           } catch (er) {}
           
-          new Socket(that.origConnection, that.socketType, that.connectionType, that.timeout, that.retries, that.deferred)
+          new Req(that.origConnection, that.socketType, that.connectionType, that.timeout, that.retries, that.deferred)
             .send(data, id);    
         } else {
           try {
