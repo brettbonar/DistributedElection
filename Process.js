@@ -20,9 +20,9 @@ const RequestWork = require("./Messages/RequestWork");
 const Coordinate = require("./Messages/Coordinate");
 const computeEditDistance = require("./computeEditDistance");
 
-const TIMEOUT = 10000;
-const STRING_PROCESSING_TIMEOUT = 10000;
-const START_PORT = 3000;
+const TIMEOUT = 30000;
+const STRING_PROCESSING_TIMEOUT = 30000;
+const START_PORT = 12000;
 
 const S3_SOURCE_BUCKET = "distributed-election";
 const S3_BUCKET = "distributed-election-run";
