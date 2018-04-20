@@ -15,9 +15,10 @@ function getDirectoryListing(bucket, directory) {
   if (directory) {
     params.Prefix = directory + "/";
     params.Delimiter = "/";
+    params.StartAfter = "string-pairs/StringPair-00599"
   }
 
-  return s3.listObjects(params).promise().then((data) => {
+  return s3.listObjectsV2(params).promise().then((data) => {
     return data.Contents;
   });
 }
